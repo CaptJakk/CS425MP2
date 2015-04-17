@@ -145,7 +145,7 @@ class node:
 			if is_between(self.fingertable[i+1].start, self.idno, self.fingertable[i].node):
 				self.fingertable[i+1].node = self.fingertable[i].node
 			else:
-				self.fingertable[i+1].node = int(send_recv("find_successor "+str(self.fingertable[i+1].start)))
+				self.fingertable[i+1].node = int(send_recv("find_successor "+str(self.fingertable[i+1].start), node_id))
 
 	def update_others(self):
 		for i in range(1, 8+1):
