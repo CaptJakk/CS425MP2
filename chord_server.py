@@ -8,13 +8,17 @@ import sys
 
 TCP_IP = "127.0.0.1"
 nodes = {}
+count = 0
 
 def main():
-	filename = sys.stdout
-	if(sys.argv[1] == '-g'):
-		filename = sys.argv[2]
-
-	fd = open(filename, 'w')
+	fd = 0
+	flag = False
+	if(len(sys.argv) == 3):
+		if(sys.argv[1] == '-g'):
+			filename = sys.argv[2]
+		fd = open(filename, 'w')
+		flag = True
+	
 	#COMMAND LOOP
 	nodes[0] = node(4000, 0)
 	f = open("keys.txt")
@@ -29,7 +33,9 @@ def main():
 		command = raw_input("please enter new command or exit to leave:\n")
 		command = command.split()
 		if command[0] == 'exit':
-			fd.close()
+			print count
+			if(flag):
+				fd.close()
 			break
 		elif command[0] == "join":
 			p = int(command[1])
@@ -63,7 +69,10 @@ def main():
 					temp_keys = sorted(temp_keys)
 					for entry in temp_keys:
 						out += " "+str(entry)
-					fd.write(out+"\n")
+					if(flag):
+						fd.write(out+"\n")
+					else:
+						print out
 			else:
 				out = command[1]
 				temp_keys = []
@@ -72,7 +81,10 @@ def main():
 				temp_keys = sorted(temp_keys)
 				for key in temp_keys:
 					out += " "+str(key)
-				fd.write(out+"\n")
+				if(flag):
+					fd.write(out+"\n")
+				else:
+					print out
 		else:
 			pass
 
@@ -216,6 +228,8 @@ def process_request(node, conn):
 	return
 
 def send_recv(command, idno):
+	global count
+	count = count + 1
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	s.connect((TCP_IP, 4000+idno))
 	s.send(command+"\n")
