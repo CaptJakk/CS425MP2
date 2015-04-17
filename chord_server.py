@@ -9,8 +9,11 @@ nodes = {}
 
 def main():
 	#COMMAND LOOP
-	
 	nodes[0] = node(4000, 0)
+	f = open("keys.txt")
+	for line in f:
+		line = line.split()
+		nodes[0].keys[int(line[0])] = line[1]
 	t = threading.Thread(target=start_node, args=(nodes[0],))
 	t.setDaemon(True)
 	t.start()
@@ -27,13 +30,11 @@ def main():
 			t.setDaemon(True)
 			t.start()
 			nodes[p].join(0)
-			print "yo"
 		elif command[0] == 'find':
 			print "not yet implemented\n"
 		elif command[0] == 'leave':
 			print "not yet implemented\n"
 		elif command[0] == 'show':
-			print "not yet implemented\n"
 			if command[1] == 'all':
 				for key in nodes:
 					print "NODE "+str(nodes[key].idno)
@@ -44,13 +45,10 @@ def main():
 						print "RANGE: "+"("+str(nodes[key].fingertable[i].start)+","+str(nodes[key].fingertable[i].end)+")"
 						print "SUCCESSOR: "+str(nodes[key].fingertable[i].node)
 			else:
-				pass
-		elif command[0] == 'fs':
-			print nodes[int(command[2])].find_successor(int(command[1]))
-		elif command[0] == 'fp':
-			print nodes[int(command[2])].find_predecessor(int(command[1]))
-		elif command[0] == 'fc':
-			print nodes[int(command[2])].find_cpf(int(command[1]))
+				out = command[1]
+				for index in nodes[int(command[1])].keys:
+					out += " "+str(index)
+				print out
 		else:
 			pass
 
@@ -95,7 +93,6 @@ class node:
 			self.init_finger_table(node_id)
 			self.update_others()
 		else:
-			print "proc\'d"
 			for i in range(1, 8+1):
 				self.fingertable[i].node = self.idno
 			self.predecessor_id = self.idno
@@ -113,10 +110,10 @@ class node:
 	def update_others(self):
 		for i in range(1, 8+1):
 			p = self.find_predecessor((self.idno-2**(i-1))%256)[0]
-			print p, (self.idno-2**(i-1))%256
 			send_recv("update_finger_table "+str(self.idno)+" "+str(i), p)
 
 	def update_finger_table(self, s, i):
+		#the paper is wrong, the second argument to this is different than the paper
 		if is_between(s, self.fingertable[i].start, self.fingertable[i].node):
 			self.fingertable[i].node = s
 			p = self.predecessor_id
@@ -166,6 +163,10 @@ def process_request(node, conn):
 		conn.send(str(node.predecessor_id)+"\n")
 	if req[0] == "get_successor":
 		conn.send(str(node.fingertable[1].node)+"\n")
+	if req[0] == "key_transfer":
+		pass
+	if req[0] == "key_lookup":
+		pass
 	return
 
 def send_recv(command, idno):
@@ -188,16 +189,12 @@ def is_between(x, a, b):
 	b = b %256
 	if b <= a:
 		if x >= a and x < 256:
-			#print str(x)+" is between "+str(a)+" and "+str(b)
 			return True
 		if x >= 0 and x < b:
-			#print str(x)+" is between "+str(a)+" and "+str(b)
 			return True
 	else:
 		if x >= a and x < b:
-			#print str(x)+" is between "+str(a)+" and "+str(b)
 			return True
-	#print str(x)+" is not between "+str(a)+" and "+str(b)
 	return False
 
 
