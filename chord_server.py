@@ -3,11 +3,18 @@ import socket
 import threading
 import copy
 import pickle
+import sys
+
 
 TCP_IP = "127.0.0.1"
 nodes = {}
 
 def main():
+	filename = sys.stdout
+	if(sys.argv[1] == '-g'):
+		filename = sys.argv[2]
+
+	fd = open(filename, 'w')
 	#COMMAND LOOP
 	nodes[0] = node(4000, 0)
 	f = open("keys.txt")
@@ -19,9 +26,10 @@ def main():
 	t.start()
 	running = 1
 	while running == 1:
-		command = raw_input("please enter new command:\n")
+		command = raw_input("please enter new command or exit to leave:\n")
 		command = command.split()
 		if command[0] == 'exit':
+			fd.close()
 			break
 		elif command[0] == "join":
 			p = int(command[1])
@@ -55,7 +63,7 @@ def main():
 					temp_keys = sorted(temp_keys)
 					for entry in temp_keys:
 						out += " "+str(entry)
-					print out
+					fd.write(out+"\n")
 			else:
 				out = command[1]
 				temp_keys = []
@@ -64,7 +72,7 @@ def main():
 				temp_keys = sorted(temp_keys)
 				for key in temp_keys:
 					out += " "+str(key)
-				print out
+				fd.write(out+"\n")
 		else:
 			pass
 
