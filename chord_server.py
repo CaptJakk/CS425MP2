@@ -37,89 +37,90 @@ def main():
 			if command[1] == 'all':
 				for key in nodes:
 					print "NODE "+str(nodes[key].idno)
-					print "SUCCESSOR = "+str(nodes[key].successor_id)
+					print "SUCCESSOR = "+str(nodes[key].fingertable[1].node)
 					print "PREDECESSOR = "+str(nodes[key].predecessor_id)
 					print "FINGER TABLE:"
 					for i in range(1, 8+1):
 						print "RANGE: "+"("+str(nodes[key].fingertable[i].start)+","+str(nodes[key].fingertable[i].end)+")"
-						print "SUCCESSOR: "+str(nodes[key].fingertable[i].successor_id)
+						print "SUCCESSOR: "+str(nodes[key].fingertable[i].node)
 			else:
 				pass
+		elif command[0] == 'fs':
+			print nodes[int(command[2])].find_successor(int(command[1]))
+		elif command[0] == 'fp':
+			print nodes[int(command[2])].find_predecessor(int(command[1]))
+		elif command[0] == 'fc':
+			print nodes[int(command[2])].find_cpf(int(command[1]))
 		else:
 			pass
 
 class finger_entry:
-	def __init__(self, start, end, successor):
+	def __init__(self, start, end, node):
 		self.start = start
 		self.end = end
-		self.successor_id = successor
+		self.node = node
 
 class node:
 	def __init__(self, port, idno):
 		self.port = port
 		self.idno = idno
 		self.predecessor_id = 0
-		self.successor_id = 0
 		self.keys = {}
 		self.fingertable = {}
 		for i in range(1, 8+1):
 			self.fingertable[i] = finger_entry((idno+2**(i-1))%256, idno+2**(i)%256, self.idno)
 
-
+	#returns successor of idno
 	def find_successor(self, idno):
 		return self.find_predecessor(idno)[1]
 
+	#returns tuple of the predecessor of idno and the predecessors successor
 	def find_predecessor(self, idno):
-		print self.idno
-		print idno
-		temp = (self.idno, self.successor_id)
-		while not is_between(temp[0]+1, temp[1]+1, idno):
-
-			if temp[0] == self.idno:
-				temp = self.find_cpf(idno)
-			else:
-				x = send_recv("find_cpf "+str(idno), temp[0]).split(" ")
-				temp = (x[0], x[1])
-
+		temp = (self.idno, self.fingertable[1].node)
+		while not is_between(idno, temp[0]+1, temp[1]+1):
+			x = send_recv("find_cpf "+str(idno), temp[0]).split(" ")
+			temp = (int(x[0]), int(x[1]))
 		return temp
 
+
+	#finds the finger of the caller that is the closest finger that precedes idno
 	def find_cpf(self, idno):
 		for i in range(8, 0, -1):
-			if is_between(self.idno+1, idno, self.fingertable[i].successor_id):
-				return (self.fingertable[i].successor_id, int(send_recv("get_successor", self.fingertable[i].successor_id)))
-		return (self.idno, self.successor_id)
+			if is_between(self.fingertable[i].node, self.idno+1, idno):
+				return (self.fingertable[i].node, int(send_recv("get_successor", self.fingertable[i].node)))
+		return (self.idno, self.fingertable[i].node)
 
 	def join(self, node_id):
 		if node_id in nodes:
 			self.init_finger_table(node_id)
 			self.update_others()
 		else:
+			print "proc\'d"
 			for i in range(1, 8+1):
-				self.fingertable[i].successor_id = self.idno
+				self.fingertable[i].node = self.idno
 			self.predecessor_id = self.idno
 
 	def init_finger_table(self, node_id):
-		self.fingertable[1].successor_id = int(send_recv("find_successor "+str(self.fingertable[1].start), node_id))
-		self.successor_id = self.fingertable[1].successor_id
-		print self.successor_id
-		self.predecessor_id = int(send_recv("get_predecessor", self.successor_id))
-		send_recv("update_predecessor "+str(self.idno), self.successor_id)
+		self.fingertable[1].node = int(send_recv("find_successor "+str(self.fingertable[1].start), node_id))
+		self.predecessor_id = int(send_recv("get_predecessor", self.fingertable[1].node))
+		send_recv("update_predecessor "+str(self.idno), self.fingertable[1].node)
 		for i in range(1, 8+1-1):
-			if is_between(self.idno, self.fingertable[i].successor_id, self.fingertable[i+1].start):
-				self.fingertable[i+1].successor_id = self.fingertable[i].successor_id
+			if is_between(self.fingertable[i+1].start, self.idno, self.fingertable[i].node):
+				self.fingertable[i+1].node = self.fingertable[i].node
 			else:
-				self.fingertable[i+1].successor_id = int(send_recv("find_successor "+str(self.fingertable[i+1].start), node_id))
+				self.fingertable[i+1].node = int(send_recv("find_successor "+str(self.fingertable[i+1].start)))
 
 	def update_others(self):
 		for i in range(1, 8+1):
 			p = self.find_predecessor((self.idno-2**(i-1))%256)[0]
+			print p, (self.idno-2**(i-1))%256
 			send_recv("update_finger_table "+str(self.idno)+" "+str(i), p)
 
-	def update_finger_table(self, node_id, index):
-		if is_between(self.idno, self.fingertable[index].successor_id, node_id):
-			self.fingertable[index].successor_id = node_id
+	def update_finger_table(self, s, i):
+		if is_between(s, self.fingertable[i].start, self.fingertable[i].node):
+			self.fingertable[i].node = s
 			p = self.predecessor_id
-			send_recv("update_finger_table "+str(node_id)+" "+str(index), p)
+			send_recv("update_finger_table "+str(s)+" "+str(i), p)
 
 def start_node(node):
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -147,25 +148,29 @@ def process_request(node, conn):
 	if req[0] == "find_successor":
 		conn.send(str(node.find_successor(int(req[1])))+"\n")
 	if req[0] == "find_predecessor":
-		conn.send(str(node.find_predecessor(int(req[1]))[0])+" "+str(node.find_predecessor(int(req[1]))[1])+"\n")
+		x = node.find_predecessor(int(req[1]))
+		conn.send(str(x[0])+" "+str(x[1])+"\n")
 	if req[0] == "find_cpf":
-		conn.send(str(node.find_cpf(int(req[1]))[0])+" "+str(node.find_cpf(int(req[1]))[1])+"\n")
+		x = node.find_cpf(int(req[1]))
+		conn.send(str(x[0])+" "+str(x[1])+"\n")
 	if req[0] == "update_finger_table":
 		node.update_finger_table(int(req[1]), int(req[2]))
 		conn.send("ack\n")
 	if req[0] == "update_predecessor":
 		node.predecessor_id = int(req[1])
 		conn.send("ack\n")
+	if req[0] == "update_successor":
+		node.fingertable[1].node = int(req[1])
+		conn.send("ack\n")
 	if req[0] == "get_predecessor":
 		conn.send(str(node.predecessor_id)+"\n")
 	if req[0] == "get_successor":
-		conn.send(str(node.successor_id)+"\n")
+		conn.send(str(node.fingertable[1].node)+"\n")
 	return
 
 def send_recv(command, idno):
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	s.connect((TCP_IP, 4000+idno))
-	print command
 	s.send(command+"\n")
 	response = ""
 	while True:
@@ -178,17 +183,21 @@ def send_recv(command, idno):
 
 	return response[:-1]
 
-def is_between(a, b, x):
+def is_between(x, a, b):
 	a = a %256
 	b = b %256
 	if b <= a:
 		if x >= a and x < 256:
+			#print str(x)+" is between "+str(a)+" and "+str(b)
 			return True
 		if x >= 0 and x < b:
+			#print str(x)+" is between "+str(a)+" and "+str(b)
 			return True
 	else:
 		if x >= a and x < b:
+			#print str(x)+" is between "+str(a)+" and "+str(b)
 			return True
+	#print str(x)+" is not between "+str(a)+" and "+str(b)
 	return False
 
 
