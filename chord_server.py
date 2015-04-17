@@ -31,23 +31,39 @@ def main():
 			t.start()
 			nodes[p].join(0)
 		elif command[0] == 'find':
-			print "not yet implemented\n"
+			p = int(command[1])
+			if p in nodes:
+				k = int(command[2])
+				print nodes[p].find(k)
 		elif command[0] == 'leave':
-			print "not yet implemented\n"
+			p = int(command[1])
+			for key in nodes[p].keys:
+				send_recv("transfer_key_post "+str(key)+" "+str(nodes[p].keys[key]), nodes[p].fingertable[1].node)
+			send_recv("update_predecessor "+str(nodes[p].predecessor_id), nodes[p].fingertable[1].node)
+			send_recv("update_successor "+str(nodes[p].fingertable[1].node), nodes[p].predecessor_id)
+			send_recv("update_others", nodes[p].fingertable[1].node)
+			nodes[p].running = False
+			send_recv("close", p)
+			del nodes[p]
 		elif command[0] == 'show':
 			if command[1] == 'all':
 				for key in nodes:
-					print "NODE "+str(nodes[key].idno)
-					print "SUCCESSOR = "+str(nodes[key].fingertable[1].node)
-					print "PREDECESSOR = "+str(nodes[key].predecessor_id)
-					print "FINGER TABLE:"
-					for i in range(1, 8+1):
-						print "RANGE: "+"("+str(nodes[key].fingertable[i].start)+","+str(nodes[key].fingertable[i].end)+")"
-						print "SUCCESSOR: "+str(nodes[key].fingertable[i].node)
+					out = str(key)
+					temp_keys = []
+					for index in nodes[key].keys:
+						temp_keys.append(int(index))
+					temp_keys = sorted(temp_keys)
+					for entry in temp_keys:
+						out += " "+str(entry)
+					print out
 			else:
 				out = command[1]
+				temp_keys = []
 				for index in nodes[int(command[1])].keys:
-					out += " "+str(index)
+					temp_keys.append(int(index))
+				temp_keys = sorted(temp_keys)
+				for key in temp_keys:
+					out += " "+str(key)
 				print out
 		else:
 			pass
@@ -60,6 +76,7 @@ class finger_entry:
 
 class node:
 	def __init__(self, port, idno):
+		self.running = True
 		self.port = port
 		self.idno = idno
 		self.predecessor_id = 0
@@ -96,6 +113,9 @@ class node:
 			for i in range(1, 8+1):
 				self.fingertable[i].node = self.idno
 			self.predecessor_id = self.idno
+		for i in range(self.predecessor_id+1, self.idno+1):
+			x = send_recv("transfer_key_get "+str(i), self.fingertable[1].node).split()
+			self.keys[int(x[0])] = x[1]
 
 	def init_finger_table(self, node_id):
 		self.fingertable[1].node = int(send_recv("find_successor "+str(self.fingertable[1].start), node_id))
@@ -119,11 +139,20 @@ class node:
 			p = self.predecessor_id
 			send_recv("update_finger_table "+str(s)+" "+str(i), p)
 
+	def find(self, key):
+		if key not in self.keys:
+			if self.find_cpf(key)[0] == self.idno:
+				return send_recv("find_key "+str(key), self.fingertable[1].node)
+			else:
+				return send_recv("find_key "+str(key), self.find_cpf(key)[0])
+		else:
+			return self.idno
+
 def start_node(node):
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	s.bind((TCP_IP, node.port))
-	s.listen(9)
-	while True:
+	s.listen(100)
+	while node.running:
 		(conn, addr) = s.accept()
 		t = threading.Thread(target=process_request, args=(node,conn))
 		t.setDaemon(True)
@@ -150,6 +179,9 @@ def process_request(node, conn):
 	if req[0] == "find_cpf":
 		x = node.find_cpf(int(req[1]))
 		conn.send(str(x[0])+" "+str(x[1])+"\n")
+	if req[0] == "update_others":
+		node.update_others()
+		conn.send("ack\n")
 	if req[0] == "update_finger_table":
 		node.update_finger_table(int(req[1]), int(req[2]))
 		conn.send("ack\n")
@@ -163,10 +195,16 @@ def process_request(node, conn):
 		conn.send(str(node.predecessor_id)+"\n")
 	if req[0] == "get_successor":
 		conn.send(str(node.fingertable[1].node)+"\n")
-	if req[0] == "key_transfer":
-		pass
-	if req[0] == "key_lookup":
-		pass
+	if req[0] == "close":
+		conn.send("ack\n")
+	if req[0] == "transfer_key_get":
+		conn.send(req[1]+" "+node.keys[int(req[1])]+"\n")
+		del node.keys[int(req[1])]
+	if req[0] == "transfer_key_post":
+		node.keys[int(req[1])] = req[2]
+		conn.send("ack\n")
+	if req[0] == "find_key":
+		conn.send(str(node.find(int(req[1])))+"\n")
 	return
 
 def send_recv(command, idno):
