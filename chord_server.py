@@ -9,8 +9,10 @@ import sys
 TCP_IP = "127.0.0.1"
 nodes = {}
 count = 0
+find = False
 
 def main():
+	global find
 	fd = 0
 	flag = False
 	if(len(sys.argv) == 3):
@@ -33,11 +35,18 @@ def main():
 		command = raw_input("please enter new command or exit to leave:\n")
 		command = command.split()
 		if command[0] == 'exit':
-			print count
 			if(flag):
 				fd.close()
 			break
+		elif command[0] == 'count':
+			if(flag):
+				global count
+				fd.write(str(count * 2)+"\n")
+				count = 0
+			else:
+				print count
 		elif command[0] == "join":
+			find = False
 			p = int(command[1])
 			nodes[p] = node(4000+p, p)
 			t = threading.Thread(target=start_node, args=(nodes[p],))
@@ -45,6 +54,7 @@ def main():
 			t.start()
 			nodes[p].join(0)
 		elif command[0] == 'find':
+			find = True
 			p = int(command[1])
 			if p in nodes:
 				k = int(command[2])
@@ -149,7 +159,10 @@ class node:
 
 	def update_others(self):
 		for i in range(1, 8+1):
-			p = self.find_predecessor((self.idno-2**(i-1))%256)[0]
+			b = self.idno-2**(i-1)
+			if i == 1: 
+				b = self.idno
+			p = self.find_predecessor(b%256)[0]
 			send_recv("update_finger_table "+str(self.idno)+" "+str(i), p)
 
 	def update_finger_table(self, s, i):
@@ -161,10 +174,11 @@ class node:
 
 	def find(self, key):
 		if key not in self.keys:
-			if self.find_cpf(key)[0] == self.idno:
+			a = self.find_cpf(key)[0]
+			if a == self.idno:
 				return send_recv("find_key "+str(key), self.fingertable[1].node)
 			else:
-				return send_recv("find_key "+str(key), self.find_cpf(key)[0])
+				return send_recv("find_key "+str(key), a)
 		else:
 			return self.idno
 
@@ -177,6 +191,7 @@ def start_node(node):
 		t = threading.Thread(target=process_request, args=(node,conn))
 		t.setDaemon(True)
 		t.start()
+	s.close()
 		
 def process_request(node, conn):
 	req = ""
@@ -240,6 +255,7 @@ def send_recv(command, idno):
 			response += data
 			break
 		response += data
+
 	s.close()
 
 	return response[:-1]
@@ -247,11 +263,20 @@ def send_recv(command, idno):
 def is_between(x, a, b):
 	a = a %256
 	b = b %256
-	if b <= a:
+	if b < a:
 		if x >= a and x < 256:
 			return True
 		if x >= 0 and x < b:
 			return True
+	elif a == b:
+		if find:
+			if x == a:
+				return True
+		else:
+			if x >= a and x < 256:
+				return True
+			if x >= 0 and x < b:
+				return True
 	else:
 		if x >= a and x < b:
 			return True
